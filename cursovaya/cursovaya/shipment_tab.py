@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QDate, QTimer
 from data_manager import DataManager
-from shipment_dialog import ShipmentDialog  # Убедитесь, что этот модуль существует и корректен
+import datetime
 
 class ShipmentTab(QWidget):
     """Вкладка для управления отправкой заказов."""
@@ -12,11 +12,9 @@ class ShipmentTab(QWidget):
     def __init__(self, data_manager: DataManager):
         super().__init__()
         self.data_manager = data_manager
-
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        # Заголовок
         header_label = QLabel("<b>Управление отправкой заказов</b>")
         layout.addWidget(header_label)
 
@@ -41,13 +39,11 @@ class ShipmentTab(QWidget):
 
         # Имя клиента
         self.client_input = QComboBox()
-        self.load_clients()  # Загрузка клиентов
-        self.client_input.currentTextChanged.connect(self.update_delivery_address)
         left_form.addWidget(QLabel("Имя клиента:"))
         left_form.addWidget(self.client_input)
 
         # Адрес доставки (автоматически заполняется)
-        self.delivery_address_input = QLineEdit()
+        self.delivery_address_input = QLineEdit()  # Инициализация перед вызовом load_clients
         self.delivery_address_input.setPlaceholderText("Адрес доставки")
         self.delivery_address_input.setReadOnly(True)
         left_form.addWidget(QLabel("Адрес доставки:"))
@@ -102,13 +98,10 @@ class ShipmentTab(QWidget):
         button_layout = QHBoxLayout()
         self.create_button = QPushButton("Создать")
         self.create_button.clicked.connect(self.create_shipment)
-        self.update_button = QPushButton("Обновить")
-        self.update_button.clicked.connect(self.update_shipment)
         self.clear_button = QPushButton("Очистить")
         self.clear_button.clicked.connect(self.clear_form)
 
         button_layout.addWidget(self.create_button)
-        button_layout.addWidget(self.update_button)
         button_layout.addWidget(self.clear_button)
 
         right_form.addLayout(button_layout)
@@ -151,6 +144,9 @@ class ShipmentTab(QWidget):
         self.data_manager.products_changed.connect(self.update_products)
         self.data_manager.contragents_changed.connect(self.update_clients)
 
+        # Теперь, когда все элементы инициализированы, загружаем клиентов
+        self.load_clients()
+
         self.load_data()
 
     def update_products(self):
@@ -172,25 +168,80 @@ class ShipmentTab(QWidget):
             self.warehouse_input.setCurrentIndex(index)
 
     def load_clients(self):
-        """Загружает клиентов из базы данных."""
+        """Загружает клиентов из базы данных и подставляет адрес выбранного клиента."""
         clients = [contragent for contragent in self.data_manager.get_contragents() if contragent.role == "Клиент"]
         self.client_input.addItems([client.id for client in clients])
 
+        # Если у клиента уже есть склад, подставим его
+        if clients:
+            default_client = clients[0]  # Выбираем первого клиента для автозаполнения
+            self.client_input.setCurrentText(default_client.id)
+            self.update_delivery_address(default_client.id)  # Подставляем адрес первого клиента
+
+        # Подключаем сигнал для обновления адреса при смене клиента
+        self.client_input.currentTextChanged.connect(self.update_clients)
+
     def update_clients(self):
-        """Обновляет список клиентов в комбобоксе."""
+        """Обновляет список клиентов в комбобоксе и автоматически подставляет адрес выбранного клиента."""
+        # Проверяем, не происходит ли уже обновление, чтобы избежать рекурсии
+        if hasattr(self, "is_updating_clients") and self.is_updating_clients:
+            return
+
+        # Устанавливаем флаг обновления, чтобы избежать рекурсии
+        self.is_updating_clients = True
+
         current_selection = self.client_input.currentText()
-        self.client_input.clear()
-        self.load_clients()
-        index = self.client_input.findText(current_selection)
-        if index != -1:
-            self.client_input.setCurrentIndex(index)
-        self.update_delivery_address(current_selection)
+
+        # Отключаем сигнал для обновления списка, чтобы избежать рекурсии
+        self.client_input.blockSignals(True)
+
+        try:
+            # Загружаем только тех контрагентов, которые являются клиентами
+            clients = [contragent for contragent in self.data_manager.get_contragents() if contragent.role == "Клиент"]
+            print(f"Найдено клиентов: {len(clients)}")  # Отладка
+
+            # Очищаем комбобокс перед добавлением новых данных
+            self.client_input.clear()
+
+            # Добавляем в комбобокс список ID клиентов, только если список пуст
+            self.client_input.addItems([client.id for client in clients])
+
+            # Если клиент был выбран ранее, устанавливаем его заново
+            if current_selection:
+                self.client_input.setCurrentText(current_selection)
+                self.update_delivery_address(current_selection)
+            elif clients:
+                # Если текущий выбор пуст, то выбираем первого клиента
+                self.client_input.setCurrentText(clients[0].id)
+                self.update_delivery_address(clients[0].id)
+
+        except Exception as e:
+            print(f"Ошибка в update_clients: {e}")  # Отладка
+            QMessageBox.warning(self, "Ошибка", f"Произошла ошибка при обновлении клиентов: {e}")
+
+        # Включаем сигналы обратно
+        self.client_input.blockSignals(False)
+
+        # Сбрасываем флаг обновления
+        self.is_updating_clients = False
 
     def update_delivery_address(self, client_name):
         """Автоматически заполняет адрес доставки на основе выбранного клиента."""
-        clients = {client.id: client.address for client in self.data_manager.get_contragents() if client.role == "Клиент"}
-        self.delivery_address_input.setText(clients.get(client_name, ""))
-        self.calculate_delivery_time()
+        try:
+            # Получаем список всех клиентов
+            clients = {client.id: client for client in self.data_manager.get_contragents() if client.role == "Клиент"}
+            print(f"Найдено клиентов для обновления адреса: {len(clients)}")  # Отладка
+            selected_client = clients.get(client_name)
+
+            if selected_client:
+                print(f"Подставляем адрес клиента {client_name}: {selected_client.address}")  # Отладка
+                self.delivery_address_input.setText(selected_client.address)
+            else:
+                print(f"Клиент с ID {client_name} не найден.")  # Отладка
+                self.delivery_address_input.clear()
+        except Exception as e:
+            print(f"Ошибка в update_delivery_address: {e}")  # Отладка
+            QMessageBox.warning(self, "Ошибка", f"Произошла ошибка при обновлении адреса: {e}")
 
     def calculate_delivery_time(self):
         """Рассчитывает время доставки и ограничивает способы доставки, если склад и клиент в одном городе."""
@@ -277,42 +328,112 @@ class ShipmentTab(QWidget):
         self.total_amount_input.setText(f"{total:.2f}")
 
     def create_shipment(self):
-        """Создает новый заказ."""
+        """Создает новый заказ и обновляет данные."""
         data = self.get_data_from_form()
-        if self.validate_data(data):
-            # Добавляем статус
-            data["status"] = "Ждёт подтверждения"
-            # Добавляем в DataManager
-            self.data_manager.add_shipment(data)
-            # Добавляем в таблицу
-            self.add_shipment_to_table(data)
-            # Очистка формы
-            self.clear_form()
-            QMessageBox.information(self, "Успех", "Заказ успешно создан.")
+
+        if not self.validate_data(data):
+            QMessageBox.warning(self, "Ошибка", "Некорректные данные.")
+            return
+
+        # Получаем данные из формы
+        product_name = data["product"]
+        amount = int(data["quantity"])
+
+        # Получаем товар и связанный склад
+        product = self.data_manager.get_product_by_name(product_name)
+        if not product:
+            QMessageBox.warning(self, "Ошибка", "Товар не найден.")
+            return
+
+        warehouse = self.data_manager.get_warehouse_by_id(product.warehouse_number)
+        if not warehouse:
+            QMessageBox.warning(self, "Ошибка", "Склад не найден.")
+            return
+
+        # Проверяем количество товара
+        if product.quantity < amount:
+            QMessageBox.warning(self, "Ошибка", f"Недостаточно товара. Доступно: {product.quantity}")
+            return
+
+        # Уменьшаем количество товара
+        product.quantity -= amount
+        if product.quantity <= 0:
+            self.data_manager.delete_product(product.id)  # Удаляем товар, если закончился
         else:
-            QMessageBox.warning(self, "Ошибка ввода", "Пожалуйста, заполните все поля корректно.")
+            self.data_manager.update_product(product.id, {"quantity": product.quantity})
+
+        # Обновляем загруженность склада
+        warehouse.capacity -= amount
+        if warehouse.capacity < 0:
+            warehouse.capacity = 0
+        self.data_manager.update_warehouse(warehouse.id, {"capacity": warehouse.capacity})
+
+        # Добавляем запись об отгрузке
+        self.data_manager.add_shipment({
+            "order_number": data["order_number"],
+            "order_date": data["order_date"],
+            "client_id": data["client"],
+            "delivery_address": data["delivery_address"],
+            "product_id": product.id,
+            "warehouse_id": warehouse.id,
+            "amount": amount,
+            "delivery_method": data["delivery_method"],
+            "total_cost": data["total_amount"],
+            "status": "Создан"
+        })
+
+        # Обновляем интерфейс
+        self.load_data()
+        self.clear_form()
+        QMessageBox.information(self, "Успех", "Отгрузка создана.")
+
+    def update_warehouse_based_on_product(self):
+        """Обновляет поле склада на основе выбранного товара."""
+        product_name = self.product_input.currentText()
+        product = self.data_manager.get_product_by_name(product_name)
+        if product:
+            # Устанавливаем склад из продукта и делаем поле read-only
+            self.warehouse_input.setCurrentText(product.warehouse_number)
+            self.warehouse_input.setEnabled(False)  # Запрещаем редактирование
+        else:
+            self.warehouse_input.clear()
+            self.warehouse_input.setEnabled(True)
+
+    def get_available_quantity(self, warehouse_id, product_id):
+        """Возвращает доступное количество товара на складе."""
+        warehouse = self.data_manager.get_warehouse_by_id(warehouse_id)
+        product = self.data_manager.get_product_by_id(product_id)
+
+        if warehouse and product:
+            # Возвращаем минимальное из количества товара на складе и доступной вместимости склада
+            return min(product.quantity, warehouse.capacity)
+        return 0
 
     def update_shipment(self):
         """Обновляет выбранный заказ."""
-        selected_row = self.shipment_table.currentRow()
+        selected_row = self.shipment_table.currentRow()  # Получаем выбранную строку
         if selected_row >= 0:
-            data = self.get_data_from_form()
-            if self.validate_data(data):
+            data = self.get_data_from_form()  # Собираем данные из формы
+            if self.validate_data(data):  # Проверяем, что данные корректны
                 # Обновляем статус, если он не подтвержден или уже в процессе
-                existing_shipment = self.data_manager.shipments[selected_row]
-                data["status"] = existing_shipment.get("status", "Ждёт подтверждения")
-                # Обновляем в DataManager
+                existing_shipment = self.data_manager.get_shipments()[selected_row]
+                data["status"] = existing_shipment.get("status", "Ждёт подтверждения")  # Обновляем статус
+                # Обновляем данные в DataManager
                 self.data_manager.update_shipment(selected_row, data)
-                # Обновляем таблицу
+                # Обновляем таблицу с заказами
                 for i, key in enumerate(["order_number", "order_date", "client", "delivery_address",
                                          "product", "warehouse", "quantity", "delivery_method",
                                          "total_amount", "status"]):
-                    self.shipment_table.setItem(selected_row, i, QTableWidgetItem(str(data[key])))
-                QMessageBox.information(self, "Успех", "Заказ успешно обновлён.")
+                    self.shipment_table.setItem(selected_row, i,
+                                                QTableWidgetItem(str(data[key])))  # Обновляем строку таблицы
+                QMessageBox.information(self, "Успех",
+                                        "Заказ успешно обновлён.")  # Показываем уведомление о успешном обновлении
             else:
-                QMessageBox.warning(self, "Ошибка ввода", "Пожалуйста, заполните все поля корректно.")
+                QMessageBox.warning(self, "Ошибка ввода",
+                                    "Пожалуйста, заполните все поля корректно.")  # Ошибка при валидации
         else:
-            QMessageBox.warning(self, "Выбор строки", "Пожалуйста, выберите строку для обновления.")
+            QMessageBox.warning(self, "Выбор строки",
+                                "Пожалуйста, выберите строку для обновления.")  # Если строка не выбрана
 
     def delete_shipment(self):
         """Удаляет выбранный заказ."""
@@ -325,7 +446,7 @@ class ShipmentTab(QWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if confirmation == QMessageBox.StandardButton.Yes:
-                # Удаляем из DataManager
+                # Удаляем заказ из DataManager
                 self.data_manager.delete_shipment(selected_row)
                 # Удаляем из таблицы
                 self.shipment_table.removeRow(selected_row)
@@ -339,48 +460,67 @@ class ShipmentTab(QWidget):
         """Подтверждает выбранный заказ и отправляет его во вкладку аналитики."""
         selected_row = self.shipment_table.currentRow()
         if selected_row >= 0:
-            shipment = self.data_manager.shipments[selected_row]
-            if shipment["status"] != "Ждёт подтверждения":
-                QMessageBox.warning(self, "Статус заказа", "Этот заказ уже подтвержден или находится в процессе.")
-                return
+            shipment = self.data_manager.get_shipments()[
+                selected_row]  # Получаем заказ из таблицы "Управление заказами"
 
-            confirmation = QMessageBox.question(
-                self,
-                "Подтверждение заказа",
-                "Вы уверены, что хотите подтвердить этот заказ?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if confirmation == QMessageBox.StandardButton.Yes:
-                # Обновляем статус заказа
-                self.data_manager.shipments[selected_row]["status"] = "Ожидает доп подтверждения"
-                self.shipment_table.setItem(selected_row, 9, QTableWidgetItem("Ожидает доп подтверждения"))
-                QMessageBox.information(self, "Успех", "Заказ подтверждён и отправлен во вкладку 'Аналитика'.")
-                # Эмитируем сигнал для обновления аналитики
-                self.data_manager.shipments_changed.emit()
-                # Удаляем заказ из таблицы "Отправка"
-                self.shipment_table.removeRow(selected_row)
+            # Проверка, что статус заказа равен "Создан"
+            if shipment.status == "Создан":
+                confirmation = QMessageBox.question(
+                    self,
+                    "Подтверждение заказа",
+                    "Вы уверены, что хотите подтвердить этот заказ?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if confirmation == QMessageBox.StandardButton.Yes:
+                    # Обновляем статус заказа и переносим его в аналитику
+                    shipment.status = "Ждёт подтверждения"  # Устанавливаем статус "Ждёт подтверждения"
+
+                    # Переносим заказ в таблицу аналитики (предположим, что добавление в аналитику происходит через DataManager)
+                    self.data_manager.add_shipment_to_analytics(shipment)
+
+                    # Удаляем заказ из таблицы "Управление заказами"
+                    self.data_manager.delete_shipment(selected_row)
+                    self.shipment_table.removeRow(selected_row)
+
+                    # Обновляем таблицу "Управление заказами" и уведомляем пользователя
+                    self.load_data()
+                    QMessageBox.information(self, "Успех", "Заказ подтверждён и отправлен в аналитику.")
+            else:
+                QMessageBox.warning(self, "Статус заказа", "Этот заказ уже подтверждён или находится в процессе.")
         else:
             QMessageBox.warning(self, "Выбор строки", "Пожалуйста, выберите строку для подтверждения.")
 
     def load_shipment_into_form(self, row, column):
         """Загружает данные выбранного заказа в форму для редактирования."""
-        shipment = self.data_manager.shipments[row]
-        self.order_number_input.setText(shipment["order_number"])
-        self.order_date_input.setDate(QDate.fromString(shipment["order_date"], "yyyy-MM-dd"))
-        client_index = self.client_input.findText(shipment["client"])
+        shipment = self.data_manager.get_shipments()[row]
+        self.order_number_input.setText(shipment.order_number)
+
+        # Преобразуем дату в строку и устанавливаем в QDate
+        if isinstance(shipment.order_date, datetime.date):
+            order_date_str = shipment.order_date.strftime("%Y-%m-%d")  # Преобразуем в строку
+            self.order_date_input.setDate(QDate.fromString(order_date_str, "yyyy-MM-dd"))
+        else:
+            self.order_date_input.setDate(QDate.currentDate())  # Устанавливаем текущую дату, если дата невалидна
+
+        client_index = self.client_input.findText(shipment.client_id)
         if client_index != -1:
             self.client_input.setCurrentIndex(client_index)
-        self.delivery_address_input.setText(shipment["delivery_address"])
-        product_index = self.product_input.findText(shipment["product"])
+
+        self.delivery_address_input.setText(shipment.delivery_address)
+
+        product_index = self.product_input.findText(shipment.product_id)
         if product_index != -1:
             self.product_input.setCurrentIndex(product_index)
-        warehouse_index = self.warehouse_input.findText(shipment["warehouse"])
+
+        warehouse_index = self.warehouse_input.findText(shipment.warehouse_id)
         if warehouse_index != -1:
             self.warehouse_input.setCurrentIndex(warehouse_index)
-        self.quantity_input.setText(shipment["quantity"])
-        delivery_method_index = self.delivery_method_input.findText(shipment["delivery_method"])
+
+        self.quantity_input.setText(str(shipment.amount))  # Преобразуем количество в строку
+        delivery_method_index = self.delivery_method_input.findText(shipment.delivery_method)
         if delivery_method_index != -1:
             self.delivery_method_input.setCurrentIndex(delivery_method_index)
+
         self.update_total_amount_and_time()
 
     def get_data_from_form(self):
@@ -436,16 +576,17 @@ class ShipmentTab(QWidget):
         """Добавляет заказ в таблицу."""
         row = self.shipment_table.rowCount()
         self.shipment_table.insertRow(row)
-        self.shipment_table.setItem(row, 0, QTableWidgetItem(shipment["order_number"]))
-        self.shipment_table.setItem(row, 1, QTableWidgetItem(shipment["order_date"]))
-        self.shipment_table.setItem(row, 2, QTableWidgetItem(shipment["client"]))
-        self.shipment_table.setItem(row, 3, QTableWidgetItem(shipment["delivery_address"]))
-        self.shipment_table.setItem(row, 4, QTableWidgetItem(shipment["product"]))
-        self.shipment_table.setItem(row, 5, QTableWidgetItem(shipment["warehouse"]))
-        self.shipment_table.setItem(row, 6, QTableWidgetItem(shipment["quantity"]))
-        self.shipment_table.setItem(row, 7, QTableWidgetItem(shipment["delivery_method"]))
-        self.shipment_table.setItem(row, 8, QTableWidgetItem(shipment["total_amount"]))
-        self.shipment_table.setItem(row, 9, QTableWidgetItem(shipment["status"]))
+        self.shipment_table.setItem(row, 0, QTableWidgetItem(str(shipment.order_number)))
+        self.shipment_table.setItem(row, 1, QTableWidgetItem(shipment.order_date.strftime('%Y-%m-%d')))
+        self.shipment_table.setItem(row, 2, QTableWidgetItem(shipment.client_id))
+        self.shipment_table.setItem(row, 3, QTableWidgetItem(shipment.delivery_address))
+        self.shipment_table.setItem(row, 4, QTableWidgetItem(shipment.product_id))
+        self.shipment_table.setItem(row, 5, QTableWidgetItem(shipment.warehouse_id))
+        self.shipment_table.setItem(row, 6, QTableWidgetItem(str(shipment.amount)))
+        self.shipment_table.setItem(row, 7, QTableWidgetItem(shipment.delivery_method))
+        self.shipment_table.setItem(row, 8, QTableWidgetItem(str(shipment.total_cost)))
+        self.shipment_table.setItem(row, 9, QTableWidgetItem(shipment.status))
+        self.shipment_table.setItem(row, 10, QTableWidgetItem(shipment.time_info))
 
     def load_data(self):
         """Загружает данные заказов в таблицу."""
@@ -491,3 +632,22 @@ class ShipmentTab(QWidget):
         # if row in self.timers:
         #     self.timers[row].stop()
         #     del self.timers[row]
+
+    def validate_data(self, data):
+        """Проверяет корректность данных."""
+        try:
+            amount = int(data["quantity"])
+            if amount <= 0:
+                return False
+        except ValueError:
+            return False
+
+        # Проверяем, что все обязательные поля заполнены
+        required_fields = [
+            data["order_number"],
+            data["client"],
+            data["product"],
+            data["delivery_address"],
+            data["delivery_method"]
+        ]
+        return all(field.strip() for field in required_fields)

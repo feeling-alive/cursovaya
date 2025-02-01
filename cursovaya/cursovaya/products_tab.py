@@ -60,6 +60,8 @@ class ProductDialog(QDialog):
 
         self.code_input = QLineEdit()
         self.code_input.setPlaceholderText("Введите код товара")
+        self.code_input.setReadOnly(True)
+        self.code_input.setStyleSheet("color: #808080;")
         self.code_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         form_layout.addWidget(self.code_input)
 
@@ -174,6 +176,8 @@ class ProductDialog(QDialog):
 
         if data:  # Для редактирования
             self.set_data(data)
+            self.quantity_input.setReadOnly(True)
+            self.quantity_input.setStyleSheet("color: #808080;")
 
     def load_warehouses(self):
         """Загрузка доступных складов"""
@@ -304,7 +308,7 @@ class ProductTab(QWidget):
         # Подключение кнопок к методам
         self.add_button.clicked.connect(self.add_product)
         self.edit_button.clicked.connect(self.edit_product)
-        self.delete_button.clicked.connect(self.delete_selected_products)
+        self.delete_button.clicked.connect(self.delete_product)
 
         self.load_data()
 
@@ -334,12 +338,27 @@ class ProductTab(QWidget):
                 QMessageBox.warning(self, "Ошибка ввода", "Пожалуйста, заполните все поля корректно.")
                 return
 
+            # Проверка, существует ли товар в базе данных
+            existing_product = self.data_manager.get_product_by_id(data["id"])
+
+            # Проверяем, не добавлен ли товар уже в таблицу
+            rows = self.product_table.rowCount()
+            for row in range(rows):
+                if self.product_table.item(row, 0).text() == data["id"]:  # Столбец с кодом товара
+                    QMessageBox.warning(self, "Ошибка", f"Товар с кодом {data['id']} уже добавлен в таблицу.")
+                    return
+
             # Проверка вместимости склада
             warehouse_id = data["warehouse_number"]  # ID склада
             quantity = int(data["quantity"])  # Преобразование количества в int
 
+            print(f"[DEBUG] Добавление товара: Код товара = {data['id']}, Количество = {quantity}")
+
             try:
-                warehouse = self.data_manager.get_warehouse_by_id(warehouse_id)
+                warehouse = self.data_manager.get_warehouse_by_id(data["warehouse_number"])
+                print(
+                    f"[DEBUG] Склад перед добавлением: Номер склада = {warehouse.id}, Текущая вместимость = {warehouse.capacity}")
+
                 if warehouse.capacity + quantity > warehouse.max_capacity:
                     QMessageBox.warning(self, "Недостаточно места",
                                         "На складе недостаточно места для добавления товара.")
@@ -349,19 +368,40 @@ class ProductTab(QWidget):
                 return
 
             try:
-                # Добавление товара в базу данных
-                self.data_manager.add_product(data)
+                if existing_product:
+                    # Если продукт существует, обновляем его количество
+                    print(f"[DEBUG] Продукт с кодом {data['id']} обновлен.")
+                    # Мы просто обновляем количество товара, а не добавляем его снова.
+                    self.data_manager.update_product(data["id"], data)
+                else:
+                    # Если товара нет, добавляем новый товар
+                    print(f"[DEBUG] Продукт с кодом {data['id']} добавлен.")
+                    self.data_manager.add_product(data)
 
-                # # Обновляем вместимость склада
-                # warehouse.capacity += quantity
-                # self.data_manager.update_warehouse(warehouse.id, {"capacity": warehouse.capacity})
+                # Обновляем только загруженность склада **один раз**
+                warehouse.capacity += quantity
+                print(f"[DEBUG] Обновление склада: Новый уровень загрузки склада = {warehouse.capacity}")
+                self.data_manager.update_warehouse(warehouse.id, {"capacity": warehouse.capacity})
 
                 # Обновляем таблицу с товарами
-                self.load_data()  # Теперь это обновит таблицу с товарами
+                self.load_data()
+
+                # Обновляем отображение склада сразу
+                self.update_warehouse_display(warehouse)
 
                 QMessageBox.information(self, "Успех", "Товар успешно добавлен.")
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", f"Ошибка при добавлении товара: {str(e)}")
+
+    def update_warehouse_display(self, warehouse):
+        """Обновляет отображение склада на вкладке товаров."""
+        rows = self.product_table.rowCount()
+        for row in range(rows):
+            # Ищем строку, которая соответствует данному складу
+            if self.product_table.item(row, 2).text() == warehouse.id:  # Столбец с номером склада
+                # Обновляем вместимость склада в таблице товаров
+                self.product_table.setItem(row, 2, QTableWidgetItem(str(warehouse.capacity)))
+                break
 
     def edit_product(self):
         """Открывает диалог для редактирования выбранного товара."""
@@ -418,8 +458,8 @@ class ProductTab(QWidget):
         else:
             QMessageBox.warning(self, "Выбор строки", "Пожалуйста, выберите товар для редактирования.")
 
-    def delete_selected_products(self):
-        """Удаляет выбранные товары."""
+    def delete_product(self):
+        """Удаляет выбранные товары (один или несколько) и обновляет загруженность склада."""
         selected_rows = self.product_table.selectionModel().selectedRows()  # Получаем выбранные строки
 
         if not selected_rows:
@@ -441,43 +481,17 @@ class ProductTab(QWidget):
                 product_id = self.product_table.item(row.row(), 0).text()  # Получаем ID товара
                 product_ids_to_delete.append(product_id)
 
-            # Удаление товаров из базы данных
             try:
+                # Перебираем все выбранные товары
                 for product_id in product_ids_to_delete:
-                    product = self.data_manager.get_product_by_id(product_id)
+                    product = self.data_manager.delete_product_record(product_id)  # Удаляем товар из базы
                     if product:
-                        self.data_manager.delete_product(product.id)  # Удаляем товар из базы данных
-
-                # Удаляем товары из таблицы (удаляем строки в обратном порядке)
-                for row in sorted(selected_rows, reverse=True):
-                    self.product_table.removeRow(row.row())  # Удаляем строку из таблицы
+                        # После удаления товара, обновляем склад
+                        self.load_data()  # Обновляем таблицу товаров
 
                 QMessageBox.information(self, "Успех", "Выбранные товары успешно удалены.")
             except Exception as e:
-                QMessageBox.critical(self, "Ошибка", f"Ошибка при удалении товаров: {str(e)}")
-
-    def delete_product(self):
-        """Удаляет выбранный товар."""
-        selected_row = self.product_table.currentRow()
-        if selected_row >= 0:
-            product_id = self.product_table.item(selected_row, 0).text()  # Получаем ID товара
-            confirmation = QMessageBox.question(
-                self,
-                "Удаление товара",
-                f"Вы уверены, что хотите удалить товар с кодом {product_id}?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if confirmation == QMessageBox.StandardButton.Yes:
-                try:
-                    product = self.data_manager.get_product_by_id(product_id)
-                    if product:
-                        self.data_manager.delete_product(product.id)  # Удаляем товар из базы
-                        self.product_table.removeRow(selected_row)  # Удаляем товар из таблицы
-                        QMessageBox.information(self, "Успех", "Товар успешно удалён.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Ошибка", f"Ошибка при удалении товара: {str(e)}")
-        else:
-            QMessageBox.warning(self, "Выбор строки", "Пожалуйста, выберите товар для удаления.")
+                QMessageBox.critical(self, "Ошибка", f"Ошибка при удалении товара: {str(e)}")
 
     def validate_data(self, data):
         """Проверяет корректность введенных данных."""

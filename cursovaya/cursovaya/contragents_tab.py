@@ -52,8 +52,6 @@ class ContragentDialog(QDialog):
         main_layout = QVBoxLayout()
         self.setLayout(main_layout)
 
-        main_layout.addSpacing(20)
-
         # Форма ввода данных контрагента
         form_layout = QVBoxLayout()
 
@@ -63,11 +61,16 @@ class ContragentDialog(QDialog):
         form_layout.addWidget(QLabel("Организация (ID):"))
         form_layout.addWidget(self.organization_input)
 
+        form_layout.addSpacing(15)
+
         # Название товара
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("Введите название товара")
         form_layout.addWidget(QLabel("Название товара:"))
         form_layout.addWidget(self.name_input)
+
+        form_layout.addSpacing(15)
+
 
         # Спецификация (ручной ввод)
         self.specification_input = QLineEdit()
@@ -75,11 +78,15 @@ class ContragentDialog(QDialog):
         form_layout.addWidget(QLabel("Спецификация:"))
         form_layout.addWidget(self.specification_input)
 
+        form_layout.addSpacing(15)
+
         # Адрес
         self.address_input = QLineEdit()
         self.address_input.setPlaceholderText("Введите адрес")
         form_layout.addWidget(QLabel("Адрес:"))
         form_layout.addWidget(self.address_input)
+
+        form_layout.addSpacing(15)
 
         # Реквизиты счета
         self.account_input = QLineEdit()
@@ -88,16 +95,18 @@ class ContragentDialog(QDialog):
         form_layout.addWidget(QLabel("Реквизиты счета:"))
         form_layout.addWidget(self.account_input)
 
+        form_layout.addSpacing(15)
+
         # Роль (Поставщик/Покупатель)
         self.role_input = QComboBox()
-        self.role_input.addItems(["Поставщик", "Покупатель"])
+        self.role_input.addItems(["Поставщик", "Клиент"])
         form_layout.addWidget(QLabel("Роль:"))
         form_layout.addWidget(self.role_input)
 
         main_layout.addLayout(form_layout)
 
         # Отступ перед кнопками
-        main_layout.addSpacing(20)
+        main_layout.addSpacing(15)
 
         # Кнопки "Сохранить" и "Отмена" расположенные вертикально
         button_layout = QVBoxLayout()
@@ -115,8 +124,6 @@ class ContragentDialog(QDialog):
         cancel_button.setFixedWidth(316)
         cancel_button.setFixedHeight(49)
         cancel_button.clicked.connect(self.reject)
-        button_layout.addWidget(save_button)
-        button_layout.addWidget(cancel_button)
         button_layout.addWidget(cancel_button, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Добавляем растяжение, если необходимо
@@ -124,6 +131,7 @@ class ContragentDialog(QDialog):
 
         # Добавляем button_layout в основной layout
         main_layout.addLayout(button_layout)
+
 
         if not data:
             try:
@@ -168,10 +176,20 @@ class ContragentDialog(QDialog):
             return
 
         try:
+            # Если контрагент существует, обновляем
             if self.data:
                 self.data_manager.update_contragent(data["id"], data)
             else:
-                self.data_manager.add_contragent(data)
+                # Если контрагента нет, добавляем новый
+                contragent_data = {
+                    "id": data["id"],
+                    "product": data["product"],
+                    "specification": data["specification"],
+                    "address": data["address"],
+                    "account_number": data["account_number"],
+                    "role": data["role"]
+                }
+                self.data_manager.add_contragent(contragent_data)
 
             self.accept()  # Закрытие окна после успешного сохранения
         except Exception as e:

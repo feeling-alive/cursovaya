@@ -1,23 +1,28 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Конфигурация подключения
+# Конфигурация подключения (локальная и удалённая)
 DB_CONFIG = {
-    "user": "root",  # Имя пользователя MySQL
-    "password": "23122005God",  # Пароль
-    "host": "localhost",  # Хост MySQL
-    "port": 3306,  # Порт
-    "database": "torgcompany"  # Название базы
+    "dialect": "mysql",
+    "driver": "pymysql",
+    "user": "root",
+    "password": "23122005God",
+    "host": "localhost",
+    "port": 3306,
+    "database": "torgcompany",
+    "use_remote": False  # Если True к удалённой БД
 }
 
-# Создаём движок SQLAlchemy
-engine = create_engine(
-    f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
-)
+
+DB_URL = f"{DB_CONFIG['dialect']}+{DB_CONFIG['driver']}://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
+
+engine = create_engine(DB_URL, pool_size=10, max_overflow=20)
 
 # Создаём сессию
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Для выполнения запросов
+Base = declarative_base()
+
+# Функция для получения сессии
 def get_session():
     return SessionLocal()

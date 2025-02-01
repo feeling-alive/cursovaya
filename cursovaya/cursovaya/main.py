@@ -15,6 +15,7 @@ from warehouse_tab import WarehouseTab  # Импортируем WarehouseTab и
 from products_tab import ProductTab  # Импортируем ProductTab из product_tab.py
 from data_manager import DataManager  # Импортируем DataManager из data_manager.py
 from db import SessionLocal
+from ReportWindow import ReportWindow
 
 class MyWindow(QWidget):
     def __init__(self):
@@ -74,7 +75,7 @@ class MyWindow(QWidget):
 
         # Страницы для QStackedWidget
         self.stacked_widget = QStackedWidget()
-        self.report_tab = QWidget()  # Замените на ваш ReportTab, если он есть
+        self.report_tab = ReportWindow(data_manager=self.data_manager)  # Создаём вкладку отчёта
         self.product_tab = ProductTab(data_manager=self.data_manager)
         self.contragent_tab = ContragentTab(data_manager=self.data_manager)
         self.shipment_tab = ShipmentTab(data_manager=self.data_manager)
@@ -96,7 +97,7 @@ class MyWindow(QWidget):
         self.shipment_button.clicked.connect(lambda: self.stacked_widget.setCurrentWidget(self.shipment_tab))
         self.analytics_button.clicked.connect(lambda: self.stacked_widget.setCurrentWidget(self.analytics_tab))
         self.warehouse_button.clicked.connect(lambda: self.stacked_widget.setCurrentWidget(self.warehouse_tab))
-        # Подключите остальные кнопки аналогично, если у вас есть другие вкладки
+
 
         main_layout.addLayout(button_layout)
         main_layout.addWidget(self.stacked_widget)

@@ -1,4 +1,47 @@
-# analytics_tab.py
+# from PyQt6.QtWidgets import (
+#     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QLabel,
+#     QMessageBox, QDialog, QFormLayout, QSizePolicy
+# )
+# from PyQt6.QtCore import Qt, QTimer
+# from data_manager import DataManager
+#
+#
+# class ConfirmationDialog(QDialog):
+#     """Диалог подтверждения заказа."""
+#
+#     def __init__(self, shipment, parent=None):
+#         super().__init__(parent)
+#         self.setWindowTitle("Подтверждение заказа")
+#         self.setModal(True)
+#         self.shipment = shipment
+#
+#         layout = QVBoxLayout()
+#         self.setLayout(layout)
+#
+#         form_layout = QFormLayout()
+#
+#         form_layout.addRow("Номер заказа:", QLabel(self.shipment.order_number))
+#         form_layout.addRow("Дата заказа:", QLabel(str(self.shipment.order_date)))
+#         form_layout.addRow("Имя клиента:", QLabel(self.shipment.client_id))
+#         form_layout.addRow("Адрес доставки:", QLabel(self.shipment.delivery_address))
+#         form_layout.addRow("Товар:", QLabel(self.shipment.product_id))
+#         form_layout.addRow("Склад:", QLabel(self.shipment.warehouse_id))
+#         form_layout.addRow("Количество:", QLabel(str(self.shipment.amount)))
+#         form_layout.addRow("Способ доставки:", QLabel(self.shipment.delivery_method))
+#         form_layout.addRow("Общая сумма:", QLabel(str(self.shipment.total_cost)))
+#
+#         layout.addLayout(form_layout)
+#
+#         # Кнопки подтверждения и отмены
+#         button_layout = QHBoxLayout()
+#         self.confirm_button = QPushButton("Подтвердить")
+#         self.cancel_button = QPushButton("Отмена")
+#         self.confirm_button.clicked.connect(self.accept)
+#         self.cancel_button.clicked.connect(self.reject)
+#         button_layout.addWidget(self.confirm_button)
+#         button_layout.addWidget(self.cancel_button)
+#         layout.addLayout(button_layout)
+
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QLabel,
@@ -6,43 +49,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from data_manager import DataManager  # Убедитесь, что путь к data_manager.py корректен
-
-
-class ConfirmationDialog(QDialog):
-    """Диалог подтверждения заказа."""
-
-    def __init__(self, shipment, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Подтверждение заказа")
-        self.setModal(True)
-        self.shipment = shipment
-
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        form_layout = QFormLayout()
-
-        form_layout.addRow("Номер заказа:", QLabel(shipment["order_number"]))
-        form_layout.addRow("Дата заказа:", QLabel(shipment["order_date"]))
-        form_layout.addRow("Имя клиента:", QLabel(shipment["client"]))
-        form_layout.addRow("Адрес доставки:", QLabel(shipment["delivery_address"]))
-        form_layout.addRow("Товар:", QLabel(shipment["product"]))
-        form_layout.addRow("Склад:", QLabel(shipment["warehouse"]))
-        form_layout.addRow("Количество:", QLabel(shipment["quantity"]))
-        form_layout.addRow("Способ доставки:", QLabel(shipment["delivery_method"]))
-        form_layout.addRow("Общая сумма:", QLabel(shipment["total_amount"]))
-
-        layout.addLayout(form_layout)
-
-        # Кнопки подтверждения и отмены
-        button_layout = QHBoxLayout()
-        self.confirm_button = QPushButton("Подтвердить")
-        self.cancel_button = QPushButton("Отмена")
-        self.confirm_button.clicked.connect(self.accept)
-        self.cancel_button.clicked.connect(self.reject)
-        button_layout.addWidget(self.confirm_button)
-        button_layout.addWidget(self.cancel_button)
-        layout.addLayout(button_layout)
 
 
 class AnalyticsTab(QWidget):
@@ -76,55 +82,49 @@ class AnalyticsTab(QWidget):
 
         # Кнопки управления
         button_layout = QHBoxLayout()
-        self.refresh_button = QPushButton("Обновить")
+        self.refresh_button = QPushButton("Обновить статусы")
         self.confirm_button = QPushButton("Подтвердить")
         self.cancel_button = QPushButton("Отмена")
-        self.refresh_button.clicked.connect(self.load_data)
-        self.confirm_button.clicked.connect(self.confirm_selected_order)
-        self.cancel_button.clicked.connect(self.cancel_selected_order)
         button_layout.addWidget(self.refresh_button)
         button_layout.addWidget(self.confirm_button)
         button_layout.addWidget(self.cancel_button)
         layout.addLayout(button_layout)
 
-        # Подключаем сигнал изменения заказов
-        self.data_manager.shipments_changed.connect(self.load_data)
+        self.refresh_button.clicked.connect(self.update_shipment_in_table)  # Обновление статусов
+        self.confirm_button.clicked.connect(self.confirm_selected_order)  # Подтверждение заказа
+        self.cancel_button.clicked.connect(self.cancel_selected_order)  # Отмена заказа
 
-        self.load_data()
+        # Подключаем сигнал изменения данных аналитики
+        self.data_manager.analytics_changed.connect(self.load_data)  # Обновление таблицы аналитики
+
+        self.load_data()  # Первоначальная загрузка данных при старте
 
     def load_data(self):
-        """Загружает данные заказов в таблицу аналитики."""
-        self.analytics_table.setRowCount(0)
-        shipments = self.data_manager.get_shipments()  # Используем метод
-        for shipment in shipments:
-            # Добавляем заказы всех интересующих статусов
-            if shipment.status in ["Ожидает доп подтверждения", "Формируется", "В пути", "Завершён"]:
-                self.add_shipment_to_table(shipment)
-
-        # Проверяем, нужно ли активировать кнопку "Подтвердить"
-        selected_row = self.analytics_table.currentRow()
-        if selected_row >= 0:
-            shipment = shipments[selected_row]
-            if shipment.status != "Ожидает доп подтверждения":
-                self.confirm_button.setDisabled(True)
-            else:
-                self.confirm_button.setEnabled(True)
+        """Загружает все данные из базы данных в таблицу аналитики."""
+        self.analytics_table.setRowCount(0)  # Очистить таблицу перед загрузкой данных
+        analytics = self.data_manager.get_analytics()  # Загружаем все данные из таблицы shipment_analytics
+        print(f"Данные из аналитики: {len(analytics)} записей.")  # Проверка вывода данных
+        for shipment in analytics:
+            print(f"Заказ: {shipment.order_number}, Статус: {shipment.status}")  # Отладочный вывод
+            self.add_shipment_to_table(shipment)
 
     def add_shipment_to_table(self, shipment):
-        """Добавляет заказ в таблицу аналитики."""
+        """Добавляет заказ из аналитики в таблицу."""
         row = self.analytics_table.rowCount()
         self.analytics_table.insertRow(row)
-        self.analytics_table.setItem(row, 0, QTableWidgetItem(shipment["order_number"]))
-        self.analytics_table.setItem(row, 1, QTableWidgetItem(shipment["order_date"]))
-        self.analytics_table.setItem(row, 2, QTableWidgetItem(shipment["client"]))
-        self.analytics_table.setItem(row, 3, QTableWidgetItem(shipment["delivery_address"]))
-        self.analytics_table.setItem(row, 4, QTableWidgetItem(shipment["product"]))
-        self.analytics_table.setItem(row, 5, QTableWidgetItem(shipment["warehouse"]))
-        self.analytics_table.setItem(row, 6, QTableWidgetItem(shipment["quantity"]))
-        self.analytics_table.setItem(row, 7, QTableWidgetItem(shipment["delivery_method"]))
-        self.analytics_table.setItem(row, 8, QTableWidgetItem(shipment["total_amount"]))
-        self.analytics_table.setItem(row, 9, QTableWidgetItem(shipment["status"]))
-        self.analytics_table.setItem(row, 10, QTableWidgetItem(shipment.get("time", "")))
+
+        # Используем правильные атрибуты для доступа к данным
+        self.analytics_table.setItem(row, 0, QTableWidgetItem(shipment.order_number))  # Номер заказа
+        self.analytics_table.setItem(row, 1, QTableWidgetItem(str(shipment.order_date)))  # Дата заказа
+        self.analytics_table.setItem(row, 2, QTableWidgetItem(shipment.client_id))  # ID клиента
+        self.analytics_table.setItem(row, 3, QTableWidgetItem(shipment.delivery_address))  # Адрес доставки
+        self.analytics_table.setItem(row, 4, QTableWidgetItem(shipment.product_id))  # ID товара
+        self.analytics_table.setItem(row, 5, QTableWidgetItem(shipment.warehouse_id))  # ID склада
+        self.analytics_table.setItem(row, 6, QTableWidgetItem(str(shipment.amount)))  # Количество
+        self.analytics_table.setItem(row, 7, QTableWidgetItem(shipment.delivery_method))  # Способ доставки
+        self.analytics_table.setItem(row, 8, QTableWidgetItem(str(shipment.total_cost)))  # Общая сумма
+        self.analytics_table.setItem(row, 9, QTableWidgetItem(shipment.status))  # Статус
+        self.analytics_table.setItem(row, 10, QTableWidgetItem(shipment.time_info or ""))  # Время
 
     def confirm_selected_order(self):
         """Подтверждает выбранный заказ через форму."""
@@ -132,122 +132,86 @@ class AnalyticsTab(QWidget):
         if selected_row >= 0:
             # Получаем номер заказа для поиска в DataManager
             order_number = self.analytics_table.item(selected_row, 0).text()
-            shipments = self.data_manager.get_shipments()
-            shipment = next((s for s in shipments if s.order_number == order_number), None)
+            analytics = self.data_manager.get_analytics()
+            shipment = next((s for s in analytics if s.order_number == order_number), None)
             if shipment:
                 if shipment.status == "Завершён":
                     QMessageBox.warning(self, "Ошибка", "Этот заказ уже завершён.")
                     return
-                if shipment.status != "Ожидает доп подтверждения":
-                    QMessageBox.warning(self, "Ошибка", "Этот заказ уже подтверждён.")
+                if shipment.status != "Ждёт подтверждения":
+                    QMessageBox.warning(self, "Ошибка", "Этот заказ уже подтверждён или не ожидает подтверждения.")
                     return
 
-                dialog = ConfirmationDialog(shipment, self)
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    # Определяем новый статус
-                    new_status = "Формируется"
-                    minutes = 15
+                # Обновление статуса на "Формируется" и присваиваем время формирования
+                shipment.status = "Формируется"
+                shipment.time_info = "Формируется: 1 мин"
+                self.data_manager.update_analytics()  # Обновляем данные аналитики
 
-                    # Обновляем статус заказа
-                    shipment.status = new_status
-                    shipment.time_info = f"{new_status}: {minutes} мин"
-                    self.data_manager.update_shipment(shipment.id, shipment)
+                # Обновляем строку в таблице
+                self.update_shipment_in_table(selected_row)
 
-                    # Обновляем таблицу
-                    self.update_shipment_in_table(selected_row)
+                # Запускаем таймер для изменения статуса на "Отправлен" через 1 минуту
+                self.start_timer(selected_row, "Формируется", "Отправлен", minutes=1)
 
-                    QMessageBox.information(self, "Успех", f"Статус заказа изменён на '{new_status}'.")
-
-                    # Если статус не "Завершён", запускаем таймер
-                    if new_status != "Завершён":
-                        self.start_timer(selected_row, new_status, minutes)
-
-                    # Отключаем кнопку "Подтвердить", если она относится к текущей строке
-                    self.confirm_button.setDisabled(True)
+                QMessageBox.information(self, "Успех", f"Статус заказа изменён на 'Формируется'.")
             else:
                 QMessageBox.warning(self, "Ошибка", "Не удалось найти заказ.")
         else:
             QMessageBox.warning(self, "Выбор строки", "Пожалуйста, выберите строку для подтверждения.")
 
+    def start_timer(self, row, current_status, next_status, minutes=1):
+        """Запускает таймер для обновления статуса заказа."""
+        timer = QTimer(self)
+        timer.setInterval(minutes * 60 * 1000)  # минуты в миллисекунды
+        timer.timeout.connect(lambda: self.update_status(row, current_status, next_status))
+        timer.start()
+        # Сохраняем таймер в словарь по номеру строки
+        self.timers[row] = timer
+
+    def update_status(self, row, current_status, next_status):
+        """Обновляет статус заказа на следующий шаг."""
+        shipment = self.data_manager.get_analytics()[row]
+        if shipment.status == current_status:
+            shipment.status = next_status
+            if next_status == "Отправлен":
+                shipment.time_info = "Отправлен: 1 мин"
+                # Запускаем таймер для изменения статуса на "Завершён"
+                self.start_timer(row, "Отправлен", "Завершён", minutes=1)
+            elif next_status == "Завершён":
+                shipment.time_info = "Завершён"
+            self.data_manager.update_analytics()  # Обновляем данные аналитики
+            self.update_shipment_in_table(row)
+
     def cancel_selected_order(self):
-        """Отменяет выбранный заказ. Отмена возможна только для заказов со статусом "Подтверждён"."""
+        """Отменяет выбранный заказ."""
         selected_row = self.analytics_table.currentRow()
         if selected_row >= 0:
             # Получаем номер заказа для поиска в DataManager
             order_number = self.analytics_table.item(selected_row, 0).text()
-            shipment = next((s for s in self.data_manager.shipments if s["order_number"] == order_number), None)
-            if shipment and shipment["status"] == "Ожидает доп подтверждения":
-                confirmation = QMessageBox.question(
-                    self,
-                    "Отмена заказа",
-                    "Вы уверены, что хотите отменить этот заказ?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-                if confirmation == QMessageBox.StandardButton.Yes:
-                    # Удаляем заказ из DataManager
-                    self.data_manager.delete_shipment(self.data_manager.shipments.index(shipment))
-                    # Обновляем таблицу
-                    self.load_data()
-                    QMessageBox.information(self, "Успех", "Заказ успешно отменён.")
-            elif shipment and shipment["status"] in ["Формируется", "В пути"]:
-                QMessageBox.warning(
-                    self,
-                    "Невозможно отменить",
-                    "Отмена заказа невозможна, так как он уже в процессе формирования или доставки."
-                )
+            shipment = next((s for s in self.data_manager.get_analytics() if s.order_number == order_number), None)
+            if shipment:
+                if shipment.status == "Ждёт подтверждения":
+                    confirmation = QMessageBox.question(
+                        self,
+                        "Отмена заказа",
+                        "Вы уверены, что хотите отменить этот заказ?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if confirmation == QMessageBox.StandardButton.Yes:
+                        # Передаем индекс строки, а не сам объект
+                        self.data_manager.delete_shipment(selected_row)  # Удаляем заказ
+                        self.load_data()  # Обновляем таблицу
+                        QMessageBox.information(self, "Успех", "Заказ успешно отменён.")
+                else:
+                    QMessageBox.warning(self, "Ошибка",
+                                        "Невозможно отменить заказ, так как его статус не позволяет это.")
             else:
-                QMessageBox.warning(
-                    self,
-                    "Статус заказа",
-                    "Этот заказ уже завершён или не существует."
-                )
+                QMessageBox.warning(self, "Ошибка", "Не удалось найти заказ.")
         else:
             QMessageBox.warning(self, "Выбор строки", "Пожалуйста, выберите строку для отмены.")
 
     def update_shipment_in_table(self, row):
-        """Обновляет статус и время заказа в таблице аналитики."""
-        shipment = self.data_manager.shipments[row]
-        self.analytics_table.setItem(row, 9, QTableWidgetItem(shipment["status"]))
-        self.analytics_table.setItem(row, 10, QTableWidgetItem(shipment.get("time", "")))
-
-    def start_timer(self, row, current_status, minutes):
-        """Запускает таймер для обновления статуса заказа."""
-        if row in self.timers:
-            self.timers[row].stop()
-            del self.timers[row]
-
-        timer = QTimer(self)
-        timer.setSingleShot(True)
-        timer.setInterval(minutes * 60 * 1000)  # минуты в миллисекунды
-        timer.timeout.connect(lambda: self.update_status(row, current_status))
-        timer.start()
-        self.timers[row] = timer
-        self.analytics_table.setItem(row, 10, QTableWidgetItem(f"{minutes} мин до следующего статуса"))
-
-    def update_status(self, row, current_status):
-        """Обновляет статус заказа и запускает следующий таймер, если необходимо."""
-        order_number = self.analytics_table.item(row, 0).text()
-        shipment = next((s for s in self.data_manager.shipments if s["order_number"] == order_number), None)
-        if shipment:
-            if shipment["status"] == "Завершён":
-                QMessageBox.information(self, "Информация", "Этот заказ уже завершён.")
-                return
-
-            if current_status == "Формируется":
-                new_status = "В пути"
-                minutes = 10
-            elif current_status == "В пути":
-                new_status = "Завершён"
-                minutes = 0
-            else:
-                return
-
-            shipment["status"] = new_status
-            shipment["time"] = f"{new_status}: {minutes} мин" if minutes > 0 else "Завершён"
-            self.data_manager.update_shipment(self.data_manager.shipments.index(shipment), shipment)
-            self.update_shipment_in_table(row)
-
-            if new_status == "Завершён":
-                QMessageBox.information(self, "Информация", "Заказ успешно завершён.")
-            else:
-                self.start_timer(row, new_status, minutes)
+        """Обновляет данные строки в таблице аналитики."""
+        shipment = self.data_manager.get_analytics()[row]
+        self.analytics_table.setItem(row, 9, QTableWidgetItem(shipment.status))
+        self.analytics_table.setItem(row, 10, QTableWidgetItem(shipment.time_info or ""))

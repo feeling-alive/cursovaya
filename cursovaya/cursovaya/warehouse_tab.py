@@ -62,6 +62,8 @@ class WarehouseDialog(QDialog):
 
         self.number_input = QLineEdit()
         self.number_input.setPlaceholderText("Введите номер склада")
+        self.number_input.setReadOnly(True)  # Устанавливаем поле только для чтения
+        self.number_input.setStyleSheet("color: #808080;")
         self.number_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         form_layout.addWidget(self.number_input)
 
@@ -110,6 +112,8 @@ class WarehouseDialog(QDialog):
 
         self.load_input = QLineEdit()
         self.load_input.setPlaceholderText("Введите текущую загрузку")
+        self.load_input.setText("0")
+        self.load_input.setReadOnly(True)
         self.load_input.setValidator(QIntValidator())  # Только числа
         self.load_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         form_layout.addWidget(self.load_input)
@@ -290,9 +294,7 @@ class WarehouseTab(QWidget):
             data = dialog.get_data()
 
             # Проверка корректности данных
-            if not self.validate_data(data):
-                QMessageBox.warning(self, "Ошибка ввода", "Пожалуйста, заполните все поля корректно.")
-                return
+
 
             try:
                 # Преобразуем данные и добавляем склад
@@ -321,11 +323,6 @@ class WarehouseTab(QWidget):
                 dialog = WarehouseDialog(data=warehouse, data_manager=self.data_manager)
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     new_data = dialog.get_data()
-
-                    # Проверка корректности данных
-                    if not self.validate_data(new_data):
-                        QMessageBox.warning(self, "Ошибка ввода", "Пожалуйста, заполните все поля корректно.")
-                        return
 
                     # Обновление склада
                     self.data_manager.update_warehouse(warehouse.id, new_data)
